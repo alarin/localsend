@@ -14,6 +14,7 @@ import 'package:localsend_app/pages/whats_new_page.dart';
 import 'package:localsend_app/provider/animation_provider.dart';
 import 'package:localsend_app/provider/app_arguments_provider.dart';
 import 'package:localsend_app/provider/device_info_provider.dart';
+import 'package:localsend_app/provider/favorites_provider.dart';
 import 'package:localsend_app/provider/network/nearby_devices_provider.dart';
 import 'package:localsend_app/provider/network/server/server_provider.dart';
 import 'package:localsend_app/provider/network/webrtc/signaling_provider.dart';
@@ -199,6 +200,10 @@ Future<void> postInit(BuildContext context, Ref ref, bool appStart) async {
   await updateSystemOverlayStyle(context);
 
   if (checkPlatform([TargetPlatform.android])) {
+    // Republish the direct share targets on every start: dynamic shortcuts do not
+    // survive an app reinstall, and the alias may have changed meanwhile.
+    syncDirectShareShortcuts(ref.read(favoritesProvider));
+
     // On some TVs, requesting a high refresh rate can trigger HDMI resync and blank the display when entering or leaving the app.
     // https://github.com/localsend/localsend/issues/3452
     if (!ref.read(tvProvider)) {

@@ -123,6 +123,13 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
 
+                "updateDirectShareShortcuts" -> {
+                    @Suppress("UNCHECKED_CAST")
+                    val favorites = (call.arguments as? List<Map<String, String>>) ?: emptyList()
+                    DirectShareShortcuts.publish(applicationContext, favorites)
+                    result.success(null)
+                }
+
                 "isAnimationsEnabled" -> {
                     result.success(isAnimationsEnabled())
                 }

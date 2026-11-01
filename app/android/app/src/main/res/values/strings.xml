@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="direct_share_starting">Preparing direct share…</string>
+    <string name="direct_share_success">Files sent</string>
+    <string name="direct_share_failure">Sending failed</string>
+</resources>

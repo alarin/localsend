@@ -74,6 +74,38 @@
 
         </activity>
 
+        <!-- localsend: invisible direct share target. Each published favorite-device
+             shortcut shows up in the system share sheet as its own row; selecting it
+             routes the share intent here together with EXTRA_SHORTCUT_ID. -->
+        <activity
+            android:name=".DirectShareActivity"
+            android:exported="true"
+            android:process=":direct_share"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:launchMode="singleTask"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar.Fullscreen">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="org.localsend.localsend_app.DIRECT_SHARE" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="org.localsend.localsend_app.DIRECT_SHARE" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
+
+        <!-- Keeps the :direct_share process alive while the headless send runs. -->
+        <service
+            android:name=".DirectShareService"
+            android:process=":direct_share"
+            android:foregroundServiceType="dataSync"
+            android:exported="false" />
+
         <!-- Quick tile to launch the app -->
         <service
             android:name=".QuickTileService"

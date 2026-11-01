@@ -88,6 +88,24 @@ Future<void> openGallery() async {
   await _methodChannel.invokeMethod('openGallery');
 }
 
+/// Publishes the favorites as Android direct share targets (one share sheet
+/// row per device, handled headlessly by DirectShareActivity).
+Future<void> updateDirectShareShortcutsAndroid(List<({String fingerprint, String alias})> favorites) async {
+  try {
+    await _methodChannel.invokeMethod(
+      'updateDirectShareShortcuts',
+      favorites
+          .map((f) => {
+                'fingerprint': f.fingerprint,
+                'alias': f.alias,
+              })
+          .toList(),
+    );
+  } catch (e) {
+    _logger.warning('Could not update direct share shortcuts', e);
+  }
+}
+
 @MappableClass()
 class PickDirectoryResult with PickDirectoryResultMappable {
   final String directoryUri;

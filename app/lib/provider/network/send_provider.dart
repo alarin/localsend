@@ -14,6 +14,8 @@ import 'package:localsend_app/provider/file_transfer_provider.dart';
 import 'package:localsend_app/provider/http_provider.dart';
 import 'package:localsend_app/provider/selection/selected_sending_files_provider.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
+import 'package:localsend_app/util/headless.dart';
+import 'package:localsend_app/util/native/channel/android_direct_share_channel.dart';
 import 'package:localsend_app/widget/dialogs/pin_dialog.dart';
 import 'package:localsend_isolates/isolate.dart';
 import 'package:localsend_isolates/model/device.dart';
@@ -272,6 +274,17 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
         } on rust_http.RsHttpClientError_StatusCode catch (e) {
           switch (e.status) {
             case 401:
+              if (isHeadlessDirectShare) {
+                // No UI to ask for the PIN in the headless direct share engine.
+                state = state.updateSession(
+                  sessionId: sessionId,
+                  state: (s) => s?.copyWith(
+                    status: SessionStatus.finishedWithErrors,
+                    errorMessage: 'PIN required',
+                  ),
+                );
+                return;
+              }
               invalidPin = true;
 
               // wait until animation is finished
@@ -448,7 +461,10 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
 
     // Keep the process alive for the whole transfer. Started here, while the app is still in the
     // foreground, because Android 12+ rejects starting a foreground service from the background.
-    TransferNotification.start(sessionId: sessionId, receiving: false);
+    // The headless direct share engine is kept alive by its own native foreground service.
+    if (!isHeadlessDirectShare) {
+      TransferNotification.start(sessionId: sessionId, receiving: false);
+    }
 
     await _sendLoop(sessionId, sendingFiles);
   }
@@ -456,6 +472,29 @@ class SendNotifier extends Notifier<Map<String, SendSessionState>> {
   /// Reports the total session progress to the foreground service notification,
   /// so that it stays up to date while the app is minimized.
   void _updateForegroundServiceProgress(String sessionId) {
+    if (isHeadlessDirectShare) {
+      // The headless engine forwards progress to its own native foreground service.
+      final session = state[sessionId];
+      if (session == null) {
+        return;
+      }
+      final transferNotifier = ref.read(fileTransferProvider);
+      int currentBytes = 0;
+      int totalBytes = 0;
+      for (final sendingFile in session.files.values) {
+        final size = sendingFile.file.size;
+        totalBytes += size;
+        currentBytes += (transferNotifier.getProgress(sessionId: sessionId, fileId: sendingFile.file.id) * size).round();
+      }
+      final percent = totalBytes == 0 ? 0 : ((currentBytes / totalBytes) * 100).floor();
+      // ignore: discarded_futures
+      updateDirectShareNotificationAndroid(
+        title: 'LocalSend',
+        text: 'Sending to ${session.target.alias}… $percent%',
+      );
+      return;
+    }
+
     if (!TransferNotification.shouldUpdate) {
       // Checked before the sum below because progress events arrive several times per second per file.
       return;
