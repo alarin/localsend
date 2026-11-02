@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:collection/collection.dart';
 import 'package:flutter/services.dart';
@@ -61,9 +62,9 @@ Future<void> _runDirectShare(RefenaContainer ref) async {
         size: (raw['size'] as int?) ?? 0,
         thumbnail: null,
         asset: null,
-        // The send pipeline accepts content:// URIs; the native share grant lives
-        // as long as this process.
-        path: raw['uri'] as String,
+        // The native side copies the shared content into the cache, so these are
+        // plain file paths; they are deleted once the session is over.
+        path: raw['path'] as String,
         bytes: null,
         lastModified: null,
         lastAccessed: null,
@@ -87,10 +88,26 @@ Future<void> _runDirectShare(RefenaContainer ref) async {
     return;
   }
 
+  try {
+    await _sendToFavorite(ref, fingerprint, files);
+  } finally {
+    for (final f in files) {
+      final path = f.path;
+      if (path != null) {
+        try {
+          await File(path).delete();
+        } catch (_) {}
+      }
+    }
+  }
+}
+
+Future<void> _sendToFavorite(RefenaContainer ref, String? fingerprint, List<CrossFile> files) async {
+
   final favorites = ref.read(favoritesProvider);
   final favorite = favorites.where((f) => f.fingerprint == fingerprint).firstOrNull;
   if (favorite == null) {
-    await _reportDone(success: false, message: 'Unknown device');
+    await _reportDone(success: false, message: 'Unknown device: $fingerprint (favorites: ${favorites.length})');
     return;
   }
 

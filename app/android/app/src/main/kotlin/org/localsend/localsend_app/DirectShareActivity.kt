@@ -1,6 +1,7 @@
 package org.localsend.localsend_app
 
 import android.app.Activity
+import android.content.ContentResolver
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -28,7 +29,7 @@ object DirectShareHost {
     var pendingPayload: DirectSharePayload? = null
     var service: DirectShareService? = null
 
-    fun attachEngine(engine: FlutterEngine) {
+    fun attachEngine(engine: FlutterEngine, context: android.content.Context) {
         this.engine = engine
         MethodChannel(engine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
@@ -60,6 +61,34 @@ object DirectShareHost {
                     val message = call.argument<String>("message")
                     service?.finishWithResult(success, message)
                     result.success(null)
+                }
+
+                else -> result.notImplemented()
+            }
+        }
+
+        // The upload isolate resolves content:// URIs through the app's main channel
+        // (see getFileDescriptorAndroid). MainActivity registers it only for its own
+        // engine, so the headless engine needs its own handler.
+        MethodChannel(engine.dartExecutor.binaryMessenger, "org.localsend.localsend_app/localsend").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getFileDescriptor" -> {
+                    val uriString = call.argument<String>("uri")
+                    val uri = uriString?.let { Uri.parse(it) }
+                    if (uri == null || uri.scheme != ContentResolver.SCHEME_CONTENT) {
+                        result.error("INVALID_ARGUMENT", "Expected a content:// URI", null)
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        val pfd = context.contentResolver.openFileDescriptor(uri, "r")
+                        if (pfd == null) {
+                            result.error("OPEN_FAILED", "The content provider did not return a file descriptor", null)
+                            return@setMethodCallHandler
+                        }
+                        pfd.use { result.success(it.detachFd()) }
+                    } catch (e: Exception) {
+                        result.error("OPEN_FAILED", e.message ?: "Failed to open content URI", null)
+                    }
                 }
 
                 else -> result.notImplemented()
@@ -103,7 +132,7 @@ class DirectShareActivity : Activity() {
         var engine = DirectShareHost.engine
         if (engine == null) {
             engine = FlutterEngine(applicationContext)
-            DirectShareHost.attachEngine(engine)
+            DirectShareHost.attachEngine(engine, applicationContext)
             engine.dartExecutor.executeDartEntrypoint(
                 DartExecutor.DartEntrypoint(
                     FlutterInjector.instance().flutterLoader().findAppBundlePath(),
@@ -140,13 +169,29 @@ class DirectShareActivity : Activity() {
             }
         }
 
-        return uris.map { uri ->
-            val (name, size) = queryNameAndSize(uri)
+        // Copy the content into our cache while the URI grant is guaranteed to be valid:
+        // the grant is tied to this share action and might not outlive it, but the transfer
+        // can take arbitrarily long.
+        return uris.mapNotNull { uri -> copyToInbox(uri) }
+    }
+
+    private fun copyToInbox(uri: Uri): Map<String, Any>? {
+        val (name, size) = queryNameAndSize(uri)
+        val inboxDir = java.io.File(cacheDir, "direct_share_inbox").apply { mkdirs() }
+        val dest = java.io.File(inboxDir, "${java.util.UUID.randomUUID()}_$name")
+        return try {
+            contentResolver.openInputStream(uri)?.use { input ->
+                dest.outputStream().use { output -> input.copyTo(output) }
+            } ?: return null
             mapOf(
-                "uri" to uri.toString(),
                 "name" to name,
-                "size" to size,
+                "size" to if (size >= 0) size else dest.length(),
+                "path" to dest.absolutePath,
             )
+        } catch (e: Exception) {
+            android.util.Log.w("DirectShare", "Could not copy $uri", e)
+            dest.delete()
+            null
         }
     }
 
