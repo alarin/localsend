@@ -3,6 +3,9 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:localsend_app/config/init.dart';
 import 'package:localsend_app/config/init_error.dart';
 import 'package:localsend_app/config/theme.dart';
+// Keeps the Android direct share entrypoint reachable: the library must be part of
+// the kernel, otherwise the native headless engine cannot look up directShareMain.
+import 'package:localsend_app/direct_share_main.dart' show directShareMain;
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/persistence/color_mode.dart';
 import 'package:localsend_app/pages/home_page.dart';
@@ -22,8 +25,13 @@ import 'package:refena_flutter/refena_flutter.dart';
 import 'package:routerino/routerino.dart';
 import 'package:system_date_time_format/system_date_time_format.dart';
 
-Future<void> main(List<String> args) async {
-  final RefenaContainer container;
+/// Keeps the headless direct share entrypoint reachable from the main library,
+/// so the library is included in the Dart kernel and the native Android side
+/// can look it up by name.
+// ignore: unused_element
+const _keepDirectShareEntrypoint = directShareMain;
+
+Future<void> main(List<String> args) async {  final RefenaContainer container;
   try {
     container = await preInit(args);
   } catch (e, stackTrace) {
